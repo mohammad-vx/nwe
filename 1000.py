@@ -541,17 +541,10 @@ def analyze_video_alternative(video_path: str, min_duration: float = 30, max_dur
     segments.sort(key=lambda x: x.duration, reverse=True)
     return segments
 
-def process_video_segment(
-    video_path: str, 
-    start_time: float, 
-    end_time: float, 
-    output_path: str, 
-    subtitle_file: Optional[str] = None, 
-    crop_x: int = 390, 
-    crop_ratio: str = "9/16", 
-    crf: int = 23, 
-    video_bitrate: str = "1M"
-) -> bool:
+def process_video_segment(video_path: str, start_time: float, end_time: float, output_path: str, 
+                        subtitle_file: Optional[str] = None, crop_x: int = 390, 
+                        crop_ratio: str = "9/16", crf: int = 23, 
+                        video_bitrate: str = "1M") -> bool:
     """Process a video segment with optional subtitles and cropping."""
     if not os.path.exists(video_path):
         logger.error(f"Error: Video file not found at {video_path}")
@@ -613,6 +606,21 @@ def process_video_segment(
 
     if return_code == 0:
         logger.info(f"Video saved as {output_path}!")
+        
+        # حفظ معلومات المقطع المعالج
+        video_info = {
+            'video_path': video_path,
+            'output_path': output_path,
+            'start_time': start_time,
+            'end_time': end_time,
+            'subtitle_file': subtitle_file,
+            'crop_x': crop_x,
+            'crop_ratio': crop_ratio,
+            'crf': crf,
+            'video_bitrate': video_bitrate
+        }
+        save_processed_video_info(video_info)
+        
         return True
     else:
         logger.error("Error during processing.")
@@ -887,16 +895,23 @@ import json
 def save_processed_video_info(video_info: Dict[str, Any], file_path: str = "processed_videos.json") -> None:
     """Save processed video information to a JSON file."""
     try:
+        # قراءة البيانات الحالية
+        data = []
         if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-        else:
-            data = []
+            try:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    data = json.load(file)
+            except json.JSONDecodeError:
+                logger.warning("Error reading existing data, starting fresh")
 
+        # إضافة المعلومات الجديدة
         data.append(video_info)
 
+        # حفظ الملف
         with open(file_path, 'w', encoding='utf-8') as file:
             json.dump(data, file, ensure_ascii=False, indent=4)
+            
+        logger.info(f"Saved video info to {file_path}")
     except Exception as e:
         logger.error(f"Error saving processed video info: {e}")
 
@@ -919,9 +934,19 @@ def show_processed_videos_menu(processed_videos: List[Dict[str, Any]]) -> Option
 
     print_section_header("Processed Videos")
     for i, video in enumerate(processed_videos):
-        logger.info(f"{i + 1}. {video['output_path']} (Start: {format_time(video['start_time'])}, End: {format_time(video['end_time'])})")
+        # عرض معلومات أكثر تفصيلاً
+        logger.info(f"{i + 1}. {os.path.basename(video['output_path'])}")
+        logger.info(f"   Start: {format_time(video['start_time'])}")
+        logger.info(f"   End: {format_time(video['end_time'])}")
+        logger.info(f"   Duration: {format_time(video['end_time'] - video['start_time'])}")
+        if video.get('crop_x'):
+            logger.info(f"   Crop: {video['crop_x']} ({video.get('crop_ratio', '9/16')})")
+        logger.info("   " + "="*40)
 
-    choice = input("\nSelect a video to edit (1-{}): ".format(len(processed_videos))).strip()
+    choice = input("\nSelect a video to edit (1-{}) or 'back': ".format(len(processed_videos))).strip().lower()
+    if choice == 'back':
+        return None
+        
     try:
         choice_num = int(choice)
         if 1 <= choice_num <= len(processed_videos):
